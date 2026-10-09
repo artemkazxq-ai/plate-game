@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Генератор Номеров</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg: var(--tg-theme-bg-color, #fff);
+            --text: var(--tg-theme-text-color, #000);
+            --hint: var(--tg-theme-hint-color, #999);
+            --btn: var(--tg-theme-button-color, #2481cc);
+            --btn-text: var(--tg-theme-button-text-color, #fff);
+            --secondary: var(--tg-theme-secondary-bg-color, #f0f0f0);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg); color: var(--text);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 100vh; padding: 20px; gap: 24px;
+        }
+        .balance { font-size: 14px; color: var(--hint); text-align: center; }
+        .balance span { font-weight: 700; color: var(--text); }
+        .plate-box {
+            background: var(--secondary); border-radius: 16px; padding: 24px 32px;
+            width: 100%; max-width: 320px; text-align: center; min-height: 120px;
+            display: flex; align-items: center; justify-content: center;
+            transition: transform 0.1s;
+        }
+        .plate-box.pressed { transform: scale(0.97); }
+        .plate-text { font-size: 36px; font-weight: 900; letter-spacing: 4px; font-family: 'Courier New', monospace; }
+        .rank { font-size: 13px; font-weight: 600; margin-top: 8px; padding: 4px 12px; border-radius: 20px; display: inline-block; }
+        .rank-common { background: #e0e0e0; color: #666; }
+        .rank-uncommon { background: #d4edda; color: #155724; }
+        .rank-rare { background: #cce5ff; color: #004085; }
+        .rank-epic { background: #e2d5f8; color: #5a2d82; }
+        .rank-legendary { background: #fff3cd; color: #856404; }
+        .play-btn {
+            background: var(--btn); color: var(--btn-text); border: none; border-radius: 12px;
+            padding: 16px 48px; font-size: 18px; font-weight: 700; cursor: pointer;
+            width: 100%; max-width: 320px; transition: opacity 0.2s, transform 0.1s;
+        }
+        .play-btn:active { opacity: 0.85; transform: scale(0.98); }
+        .play-btn:disabled { opacity: 0.5; pointer-events: none; }
+        .history { width: 100%; max-width: 320px; font-size: 13px; color: var(--hint); text-align: center; min-height: 20px; }
+        @keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.08); } 100% { transform: scale(1); } }
+        .animate-pop { animation: pop 0.3s ease; }
+    </style>
+</head>
+<body>
+    <div class="balance">Баланс: <span id="balance">0</span> ₽</div>
+    <div class="plate-box" id="plateBox"><div class="plate-text" id="plateText">A000AA</div></div>
+    <div class="rank" id="plateRank" style="display: none;"></div>
+    <button class="play-btn" id="playBtn">Играть</button>
+    <div class="history" id="history"></div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+
+        let balance = 0;
+        let isGenerating = false;
+
+        const LETTERS = 'АВЕКМНОРСТУХ';
+        const RANKS = [
+            { id: 'common', name: 'Обычный', min: 10, max: 100, weight: 60, cls: 'rank-common' },
+            { id: 'uncommon', name: 'Необычный', min: 100, max: 500, weight: 25, cls: 'rank-uncommon' },
+            { id: 'rare', name: 'Редкий', min: 500, max: 2000, weight: 10, cls: 'rank-rare' },
+            { id: 'epic', name: 'Эпический', min: 2000, max: 10000, weight: 4, cls: 'rank-epic' },
+            { id: 'legendary', name: 'Легендарный', min: 10000, max: 50000, weight: 1, cls: 'rank-legendary' }
+        ];
+
+        function randomInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+        function randomLetter() { return LETTERS[Math.floor(Math.random() * LETTERS.length)]; }
+
+        function pickRank() {
+            const total = RANKS.reduce((s, r) => s + r.weight, 0);
+            let roll = Math.random() * total;
+            for (const r of RANKS) { if (roll < r.weight) return r; roll -= r.weight; }
+            return RANKS[0];
+        }
+
+        function generatePlate() {
+            const rank = pickRank();
+            let num;
+            if (rank.id === 'legendary') {
+                const specials = ['001', '777', '888'];
+                num = specials[Math.floor(Math.random() * specials.length)];
+            } else if (rank.id === 'epic') {
+                num = String(randomInt(1, 9)).repeat(3);
+            } else {
+                num = String(randomInt(1, 999)).padStart(3, '0');
+            }
+            const plate = `${randomLetter()}${num}${randomLetter()} ${randomInt(1, 199)}`;
+            const price = randomInt(rank.min, rank.max);
+            return { plate, rank, price };
+        }
+
+        const plateTextEl = document.getElementById('plateText');
+        const plateRankEl = document.getElementById('plateRank');
+        const plateBoxEl = document.getElementById('plateBox');
+        const balanceEl = document.getElementById('balance');
+        const playBtn = document.getElementById('playBtn');
+        const historyEl = document.getElementById('history');
+
+        function updateBalance() { balanceEl.textContent = balance.toLocaleString('ru-RU'); }
+
+        function showResult(plate, rank, price) {
+            plateTextEl.textContent = plate;
+            plateRankEl.textContent = `${rank.name} · +${price.toLocaleString('ru-RU')} ₽`;
+            plateRankEl.className = `rank ${rank.cls}`;
+            plateRankEl.style.display = 'inline-block';
+            plateBoxEl.classList.remove('animate-pop');
+            void plateBoxEl.offsetWidth;
+            plateBoxEl.classList.add('animate-pop');
+            historyEl.textContent = `Последний выигрыш: +${price.toLocaleString('ru-RU')} ₽`;
+        }
+
+        playBtn.addEventListener('click', () => {
+            if (isGenerating) return;
+            isGenerating = true;
+            playBtn.disabled = true;
+            if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+            plateBoxEl.classList.add('pressed');
+
+            let spins = 0;
+            const maxSpins = 5 + Math.floor(Math.random() * 5);
+            const interval = setInterval(() => {
+                plateTextEl.textContent = `${randomLetter()}${String(randomInt(1, 999)).padStart(3, '0')}${randomLetter()} ${randomInt(1, 199)}`;
+                plateRankEl.style.display = 'none';
+                spins++;
+                if (spins >= maxSpins) {
+                    clearInterval(interval);
+                    const { plate, rank, price } = generatePlate();
+                    balance += price;
+                    updateBalance();
+                    showResult(plate, rank, price);
+                    playBtn.disabled = false;
+                    isGenerating = false;
+                    plateBoxEl.classList.remove('pressed');
+                    if (tg.HapticFeedback && (rank.id === 'epic' || rank.id === 'legendary')) {
+                        tg.HapticFeedback.notificationOccurred('success');
+                    }
+                }
+            }, 60);
+        });
+
+        updateBalance();
+    </script>
+</body>
+</html>
