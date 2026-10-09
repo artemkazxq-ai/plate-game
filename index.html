@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Генератор Номеров</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg: var(--tg-theme-bg-color, #1a1a1a);
+            --text: var(--tg-theme-text-color, #fff);
+            --hint: var(--tg-theme-hint-color, #999);
+            --btn: var(--tg-theme-button-color, #2481cc);
+            --btn-text: var(--tg-theme-button-text-color, #fff);
+            --secondary: var(--tg-theme-secondary-bg-color, #2a2a2a);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg); color: var(--text);
+            min-height: 100vh; padding: 16px; padding-bottom: 90px;
+            display: flex; flex-direction: column; align-items: center; gap: 16px;
+        }
+
+        /* Верхняя панель */
+        .top-bar {
+            width: 100%; max-width: 400px;
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 14px; font-weight: 700;
+        }
+        .money { display: flex; gap: 12px; }
+        .money span { color: #ffd54f; }
+
+        /* Карточка номера */
+        .plate-card {
+            width: 100%; max-width: 400px;
+            background: var(--secondary); border-radius: 16px; padding: 16px;
+            display: flex; flex-direction: column; gap: 12px;
+        }
+        .rank-header {
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 13px; color: var(--hint);
+        }
+        .rank-name { font-weight: 700; }
+        .rank-price { font-weight: 700; color: #ffd54f; }
+
+        /* Сам номер */
+        .plate {
+            display: flex; border: 3px solid #000; border-radius: 6px;
+            overflow: hidden; font-family: 'Arial Black', sans-serif;
+            background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        .plate-main {
+            flex: 1; background: #fff; color: #000;
+            display: flex; align-items: center; justify-content: center;
+            padding: 12px 8px; gap: 4px; font-size: 32px; font-weight: 900;
+            letter-spacing: 2px;
+        }
+        .plate-region {
+            background: #fff; color: #000; border-left: 2px solid #000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 6px 8px; min-width: 64px;
+        }
+        .plate-region .num { font-size: 22px; font-weight: 900; line-height: 1; }
+        .plate-region .rus { font-size: 9px; font-weight: 700; margin-top: 2px; }
+        .plate-region .flag {
+            width: 24px; height: 14px; margin-top: 2px;
+            background: linear-gradient(to bottom, #fff 33%, #0039a6 33% 66%, #d52b1e 66%);
+            border: 1px solid #ccc; border-radius: 2px;
+        }
+
+        /* Прогресс-бар редкости */
+        .progress { display: flex; gap: 4px; }
+        .progress .dot { flex: 1; height: 4px; background: rgba(255,255,255,0.15); border-radius: 2px; }
+        .progress .dot.filled { background: var(--rank-color, #fff); }
+
+        /* Кнопки */
+        .btn {
+            width: 100%; max-width: 400px;
+            border: none; border-radius: 12px; padding: 16px;
+            font-size: 17px; font-weight: 700; cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+        .btn:active { transform: scale(0.97); opacity: 0.85; }
+        .btn-play { background: var(--btn); color: var(--btn-text); }
+        .btn-sell { background: #4caf50; color: #fff; }
+        .btn-keep { background: #ff9800; color: #fff; }
+        .btn:disabled { opacity: 0.5; pointer-events: none; }
+
+        .actions { display: flex; gap: 12px; width: 100%; max-width: 400px; }
+
+        /* Нижняя навигация */
+        .nav {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: var(--secondary); border-top: 1px solid rgba(255,255,255,0.1);
+            display: flex; padding: 8px 0; z-index: 100;
+        }
+        .nav-btn {
+            flex: 1; background: none; border: none; color: var(--hint);
+            font-size: 12px; font-weight: 600; padding: 8px; cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; gap: 2px;
+        }
+        .nav-btn.active { color: var(--btn); }
+        .nav-btn .icon { font-size: 20px; }
+
+        /* Коллекция */
+        .collection { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 10px; }
+        .collection-item {
+            background: var(--secondary); border-radius: 12px; padding: 10px 14px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .collection-item .mini-plate {
+            font-family: 'Arial Black', sans-serif; font-size: 16px; font-weight: 900;
+            background: #fff; color: #000; padding: 4px 8px; border-radius: 4px;
+            border: 2px solid #000;
+        }
+        .collection-item .info { text-align: right; font-size: 12px; }
+        .collection-item .info .name { font-weight: 700; }
+        .collection-item .info .price { color: #ffd54f; }
+        .empty { text-align: center; color: var(--hint); padding: 40px 20px; font-size: 14px; }
+
+        .hidden { display: none !important; }
+        .tab { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+
+        @keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+        .animate-pop { animation: pop 0.3s ease; }
+    </style>
+</head>
+<body>
+
+    <!-- Верхняя панель -->
+    <div class="top-bar">
+        <div>Генератор Номеров</div>
+        <div class="money">
+            <span id="balance">0 ₽</span>
+        </div>
+    </div>
+
+    <!-- Вкладка "Игра" -->
+    <div class="tab" id="tab-game">
+        <div class="plate-card" id="plateCard">
+            <div class="rank-header">
+                <span class="rank-name" id="rankName">Нажми «Играть»</span>
+                <span class="rank-price" id="rankPrice"></span>
+            </div>
+            <div class="plate" id="plateBox">
+                <div class="plate-main" id="plateMain">А000АА</div>
+                <div class="plate-region">
+                    <div class="num" id="plateRegion">77</div>
+                    <div class="rus">RUS</div>
+                    <div class="flag"></div>
+                </div>
+            </div>
+            <div class="progress" id="progress"></div>
+        </div>
+
+        <button class="btn btn-play" id="playBtn">🎲 Играть</button>
+
+        <div class="actions hidden" id="actions">
+            <button class="btn btn-sell" id="sellBtn">💰 Продать</button>
+            <button class="btn btn-keep" id="keepBtn">⭐ Оставить</button>
+        </div>
+    </div>
+
+    <!-- Вкладка "Коллекция" -->
+    <div class="tab hidden" id="tab-collection">
+        <div class="collection" id="collectionList">
+            <div class="empty">Коллекция пуста.<br>Выбей свой первый номер!</div>
+        </div>
+    </div>
+
+    <!-- Нижняя навигация -->
+    <div class="nav">
+        <button class="nav-btn active" id="navGame">
+            <span class="icon">🎲</span>
+            <span>Игра</span>
+        </button>
+        <button class="nav-btn" id="navCollection">
+            <span class="icon">📁</span>
+            <span>Коллекция</span>
+        </button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+
+        // ===== ДАННЫЕ =====
+        let balance = 5432; // стартовый баланс для теста
+        let collection = []; // массив сохранённых номеров
+        let currentPlate = null; // текущий выбитый номер
+        let isGenerating = false;
+
+        // ===== КОНФИГУРАЦИЯ =====
+        const LETTERS = 'АВЕКМНОРСТУХ';
+        const REGIONS = [77, 99, 97, 177, 199, 197, 50, 150, 190, 750, 47, 147, 98, 178, 116, 716, 102, 702, 123, 193, 23, 93, 61, 161, 34, 134, 26, 126, 05, 95];
+
+        const RANKS = [
+            { id: 'common',    name: 'Обычный',      min: 50,    max: 300,     weight: 50, color: '#9e9e9e', stars: 1 },
+            { id: 'uncommon',  name: 'Необычный',    min: 300,   max: 1500,    weight: 25, color: '#4caf50', stars: 2 },
+            { id: 'rare',      name: 'Редкий',       min: 1500,  max: 8000,    weight: 15, color: '#2196f3', stars: 3 },
+            { id: 'epic',      name: 'Эпический',    min: 8000,  max: 40000,   weight: 7,  color: '#9c27b0', stars: 4 },
+            { id: 'legendary', name: 'Легендарный',  min: 40000, max: 200000,  weight: 3,  color: '#ff9800', stars: 5 }
+        ];
+
+        // ===== ГЕНЕРАЦИЯ НОМЕРА =====
+        function randomInt(min, max) {
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+        function randomLetter() {
+            return LETTERS[Math.floor(Math.random() * LETTERS.length)];
+        }
+        function randomFrom(arr) {
+            return arr[Math.floor(Math.random() * arr.length)];
+        }
+
+        // Генерация "красивого" номера в зависимости от редкости
+        function generatePlateData() {
+            // Выбираем редкость
+            const total = RANKS.reduce((s, r) => s + r.weight, 0);
+            let roll = Math.random() * total;
+            let rank = RANKS[0];
+            for (const r of RANKS) {
+                if (roll < r.weight) { rank = r; break; }
+                roll -= r.weight;
+            }
+
+            let num, letter1, letter2, region;
+
+            if (rank.id === 'legendary') {
+                // 001, 777, 888 + редкие регионы
+                num = randomFrom(['001', '777', '888']);
+                letter1 = randomFrom(['А', 'В', 'Е', 'К', 'М', 'Н', 'О', 'Р', 'С', 'Т', 'У', 'Х']);
+                letter2 = letter1;
+                region = randomFrom([77, 99, 97, 177, 199, 197, 50, 150, 750]);
+            } else if (rank.id === 'epic') {
+                // Повторяющиеся цифры или зеркальные
+                const type = randomInt(1, 3);
+                if (type === 1) num = String(randomInt(1, 9)).repeat(3); // 111, 222
+                else if (type === 2) num = randomFrom(['010', '020', '101', '202', '303', '404', '505', '606', '707', '808', '909']);
+                else num = randomFrom(['111', '222', '333', '444', '555', '666', '777', '888', '999']);
+                letter1 = randomLetter();
+                letter2 = randomLetter();
+                region = randomFrom([77, 99, 97, 177, 199, 197, 50, 150, 190]);
+            } else if (rank.id === 'rare') {
+                // Номера с двумя одинаковыми цифрами
+                const digits = [randomInt(1,9), randomInt(1,9), randomInt(1,9)];
+                if (randomInt(1,2) === 1) digits[1] = digits[0]; // AAB
+                num = digits.join('');
+                letter1 = randomLetter();
+                letter2 = randomLetter();
+                region = randomFrom([77, 99, 97, 177, 199, 50, 150, 190, 750]);
+            } else if (rank.id === 'uncommon') {
+                // Есть одна пара одинаковых цифр или "круглые"
+                const type = randomInt(1, 2);
+                if (type === 1) {
+                    const d = randomInt(1, 9);
+                    const pos = randomInt(0, 2);
+                    const arr = [randomInt(1,9), randomInt(1,9), randomInt(1,9)];
+                    arr[pos] = d;
+                    num = arr.join('');
+                } else {
+                    num = randomFrom(['100', '200', '300', '400', '500', '600', '700', '800', '900']);
+                }
+                letter1 = randomLetter();
+                letter2 = randomLetter();
+                region = randomInt(1, 199);
+            } else {
+                // Обычный — случайный
+                num = String(randomInt(1, 999)).padStart(3, '0');
+                letter1 = randomLetter();
+                letter2 = randomLetter();
+                region = randomInt(1, 199);
+            }
+
+            const plate = `${letter1}${num}${letter2}`;
+            const price = randomInt(rank.min, rank.max);
+
+            return {
+                plate,
+                letter1,
+                num,
+                letter2,
+                region,
+                rank,
+                price
+            };
+        }
+
+        // ===== UI ЭЛЕМЕНТЫ =====
+        const balanceEl = document.getElementById('balance');
+        const rankNameEl = document.getElementById('rankName');
+        const rankPriceEl = document.getElementById('rankPrice');
+        const plateMainEl = document.getElementById('plateMain');
+        const plateRegionEl = document.getElementById('plateRegion');
+        const plateCardEl = document.getElementById('plateCard');
+        const progressEl = document.getElementById('progress');
+        const playBtn = document.getElementById('playBtn');
+        const actionsEl = document.getElementById('actions');
+        const sellBtn = document.getElementById('sellBtn');
+        const keepBtn = document.getElementById('keepBtn');
+        const collectionListEl = document.getElementById('collectionList');
+
+        // ===== ОБНОВЛЕНИЕ UI =====
+        function updateBalance() {
+            balanceEl.textContent = balance.toLocaleString('ru-RU') + ' ₽';
+        }
+
+        function renderProgress(rank) {
+            progressEl.innerHTML = '';
+            for (let i = 0; i < 5; i++) {
+                const dot = document.createElement('div');
+                dot.className = 'dot' + (i < rank.stars ? ' filled' : '');
+                dot.style.setProperty('--rank-color', rank.color);
+                progressEl.appendChild(dot);
+            }
+            rankNameEl.style.color = rank.color;
+        }
+
+        function showPlate(data) {
+            plateMainEl.textContent = data.plate;
+            plateRegionEl.textContent = String(data.region).padStart(2, '0');
+            rankNameEl.textContent = data.rank.name;
+            rankPriceEl.textContent = data.price.toLocaleString('ru-RU') + ' ₽';
+            renderProgress(data.rank);
+
+            plateCardEl.classList.remove('animate-pop');
+            void plateCardEl.offsetWidth;
+            plateCardEl.classList.add('animate-pop');
+        }
+
+        function renderCollection() {
+            if (collection.length === 0) {
+                collectionListEl.innerHTML = '<div class="empty">Коллекция пуста.<br>Выбей свой первый номер!</div>';
+                return;
+            }
+            collectionListEl.innerHTML = '';
+            collection.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'collection-item';
+                div.innerHTML = `
+                    <div class="mini-plate">${item.plate} ${String(item.region).padStart(2,'0')}</div>
+                    <div class="info">
+                        <div class="name" style="color:${item.rank.color}">${item.rank.name}</div>
+                        <div class="price">${item.price.toLocaleString('ru-RU')} ₽</div>
+                    </div>
+                `;
+                collectionListEl.appendChild(div);
+            });
+        }
+
+        // ===== ИГРОВОЙ ПРОЦЕСС =====
+        playBtn.addEventListener('click', () => {
+            if (isGenerating) return;
+            isGenerating = true;
+            playBtn.disabled = true;
+            actionsEl.classList.add('hidden');
+            rankPriceEl.textContent = '';
+            rankNameEl.textContent = 'Генерация...';
+
+            if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+
+            // Анимация "кручения"
+            let spins = 0;
+            const maxSpins = 8 + Math.floor(Math.random() * 5);
+            const interval = setInterval(() => {
+                const r = LETTERS[Math.floor(Math.random() * LETTERS.length)];
+                const r2 = LETTERS[Math.floor(Math.random() * LETTERS.length)];
+                const n = String(randomInt(1, 999)).padStart(3, '0');
+                plateMainEl.textContent = `${r}${n}${r2}`;
+                plateRegionEl.textContent = randomInt(1, 199);
+                spins++;
+                if (spins >= maxSpins) {
+                    clearInterval(interval);
+                    finishGeneration();
+                }
+            }, 60);
+        });
+
+        function finishGeneration() {
+            currentPlate = generatePlateData();
+            showPlate(currentPlate);
+
+            // Показываем кнопки выбора
+            actionsEl.classList.remove('hidden');
+            playBtn.disabled = false;
+            isGenerating = false;
+
+            // Вибрация для редких
+            if (tg.HapticFeedback && (currentPlate.rank.id === 'epic' || currentPlate.rank.id === 'legendary')) {
+                tg.HapticFeedback.notificationOccurred('success');
+            }
+        }
+
+        sellBtn.addEventListener('click', () => {
+            if (!currentPlate) return;
+            balance += currentPlate.price;
+            updateBalance();
+            actionsEl.classList.add('hidden');
+            rankNameEl.textContent = `Продано за ${currentPlate.price.toLocaleString('ru-RU')} ₽`;
+            rankPriceEl.textContent = '';
+            progressEl.innerHTML = '';
+            currentPlate = null;
+            if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+        });
+
+        keepBtn.addEventListener('click', () => {
+            if (!currentPlate) return;
+            collection.push(currentPlate);
+            renderCollection();
+            actionsEl.classList.add('hidden');
+            rankNameEl.textContent = `Сохранено в коллекцию`;
+            rankPriceEl.textContent = '';
+            progressEl.innerHTML = '';
+            currentPlate = null;
+            if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+        });
+
+        // ===== НАВИГАЦИЯ =====
+        const tabGame = document.getElementById('tab-game');
+        const tabCollection = document.getElementById('tab-collection');
+        const navGame = document.getElementById('navGame');
+        const navCollection = document.getElementById('navCollection');
+
+        navGame.addEventListener('click', () => {
+            tabGame.classList.remove('hidden');
+            tabCollection.classList.add('hidden');
+            navGame.classList.add('active');
+            navCollection.classList.remove('active');
+        });
+
+        navCollection.addEventListener('click', () => {
+            tabGame.classList.add('hidden');
+            tabCollection.classList.remove('hidden');
+            navGame.classList.remove('active');
+            navCollection.classList.add('active');
+        });
+
+        // ===== ИНИЦИАЛИЗАЦИЯ =====
+        updateBalance();
+        renderCollection();
+    </script>
+</body>
+                      </html>
